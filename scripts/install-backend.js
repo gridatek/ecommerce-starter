@@ -179,8 +179,7 @@ async function installMedusa() {
         return new Promise((resolve, reject) => {
             const args = [
                 'create-medusa-app@latest',
-                '--skip-db',
-                '--skip-env'
+                '--skip-db'
             ];
 
             // In CI, add --yes flag to skip prompts if supported
