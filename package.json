@@ -29,6 +29,13 @@
     "backend:migrations": "npm run migrations:run --workspace=backend",
     "backend:user": "npm run user --workspace=backend",
 
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:ps": "docker-compose ps",
+    "docker:restart": "docker-compose restart",
+    "docker:clean": "docker-compose down -v",
+
     "clean": "npm run clean:backend && npm run clean:storefront",
     "clean:backend": "node -e \"require('fs').rmSync('backend', {recursive:true, force:true})\"",
     "clean:storefront": "npm run clean --workspace=storefront --if-present"
