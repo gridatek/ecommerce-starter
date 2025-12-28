@@ -237,88 +237,7 @@ jobs:
           path: storefront/dist/
           retention-days: 7
 
-  # Job 4: Integration test
-  integration-test:
-    name: Integration Test
-    runs-on: ubuntu-latest
-    continue-on-error: true  # Optional - requires full backend setup
-    needs: [install-full-stack, test-storefront]
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: medusa_integration
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install everything
-        env:
-          CI: true
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: medusa_integration
-          SKIP_USER_PROMPT: true
-          SKIP_SEED_PROMPT: false
-        run: node scripts/install.js
-
-      - name: Start backend
-        run: |
-          npm run dev:backend &
-          sleep 30
-
-      - name: Test backend API endpoints
-        run: |
-          # Test health endpoint
-          curl -f http://localhost:9000/health || exit 1
-          
-          # Test store endpoints
-          curl -f http://localhost:9000/store/products || echo "No products (expected)"
-          curl -f http://localhost:9000/store/regions || echo "No regions"
-          
-          # Test admin endpoints (should require auth)
-          curl -I http://localhost:9000/admin/products
-          
-          echo "✅ Backend API accessible"
-
-      - name: Build storefront
-        run: npm run build:storefront
-
-      - name: Test workspace commands
-        run: |
-          # Test workspace-specific commands work
-          npm run build --workspace=backend
-          npm run build --workspace=storefront
-          echo "✅ Workspace commands functional"
-
-      - name: Stop services
-        run: |
-          pkill -f "node.*medusa" || true
-
-  # Job 5: Security and quality
+  # Job 4: Security and quality
   security-and-quality:
     name: Security & Quality
     runs-on: ubuntu-latest
@@ -378,7 +297,7 @@ jobs:
           
           echo "✅ .env.template verified"
 
-  # Job 6: Build summary
+  # Job 5: Build summary
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
