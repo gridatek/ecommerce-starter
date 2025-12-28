@@ -1,0 +1,491 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # Job 1: Setup and validate
+  setup-and-validate:
+    name: Setup & Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Verify Node.js version
+        run: |
+          node --version
+          npm --version
+
+      - name: Run prerequisites check
+        run: node scripts/check-prerequisites.js
+
+      - name: Validate repository structure
+        run: |
+          # Check for required files
+          FILES=(
+            "scripts/install.js"
+            "scripts/install-backend.js"
+            "scripts/check-prerequisites.js"
+            "scripts/templates/.env.template"
+            "package.json"
+            "README.md"
+            ".gitignore"
+            "storefront/package.json"
+            "storefront/angular.json"
+          )
+          
+          for file in "${FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Required file missing: $file"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All required files present"
+
+      - name: Verify gitignore includes backend
+        run: |
+          if ! grep -q "^backend/" .gitignore; then
+            echo "❌ .gitignore does not ignore backend/ directory"
+            exit 1
+          fi
+          echo "✅ .gitignore correctly ignores backend/"
+
+      - name: Verify backend directory not in repo
+        run: |
+          if [ -d "backend" ]; then
+            echo "❌ backend/ directory should not be committed to repository"
+            exit 1
+          fi
+          echo "✅ backend/ directory not in repository (correct)"
+
+      - name: Validate package.json workspaces
+        run: |
+          if ! grep -q '"workspaces"' package.json; then
+            echo "❌ package.json missing workspaces configuration"
+            exit 1
+          fi
+          echo "✅ Workspaces configured correctly"
+
+  # Job 2: Install and test full stack
+  install-full-stack:
+    name: Install Full Stack
+    runs-on: ubuntu-latest
+    needs: setup-and-validate
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: medusa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            node_modules
+            storefront/node_modules
+            backend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Run master installation script
+        env:
+          CI: true
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: medusa_test
+          SKIP_USER_PROMPT: true
+          SKIP_SEED_PROMPT: false
+        run: node scripts/install.js
+
+      - name: Verify workspace installation
+        run: |
+          echo "Checking workspace structure..."
+          
+          # Check backend
+          if [ ! -d "backend" ]; then
+            echo "❌ Backend directory not created"
+            exit 1
+          fi
+          
+          # Check backend dependencies
+          if [ ! -d "backend/node_modules" ]; then
+            echo "❌ Backend dependencies not installed"
+            exit 1
+          fi
+          
+          # Check backend .env
+          if [ ! -f "backend/.env" ]; then
+            echo "❌ Backend .env not created"
+            exit 1
+          fi
+          
+          # Check storefront dependencies
+          if [ ! -d "storefront/node_modules" ]; then
+            echo "❌ Storefront dependencies not installed"
+            exit 1
+          fi
+          
+          # Check root dependencies
+          if [ ! -d "node_modules" ]; then
+            echo "❌ Root dependencies not installed"
+            exit 1
+          fi
+          
+          echo "✅ Workspace installation verified"
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Test backend health
+        run: |
+          cd backend
+          npm run dev &
+          BACKEND_PID=$!
+          echo "Backend started with PID: $BACKEND_PID"
+          
+          # Wait for server to be ready
+          echo "Waiting for backend to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/health 2>/dev/null; then
+              echo "✅ Backend is responding"
+              kill $BACKEND_PID
+              exit 0
+            fi
+            echo "Attempt $i/30..."
+            sleep 2
+          done
+          
+          echo "❌ Backend did not start in time"
+          kill $BACKEND_PID
+          exit 1
+
+      - name: Upload backend artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-logs
+          path: |
+            backend/*.log
+            backend/.env
+          retention-days: 7
+
+  # Job 3: Test storefront
+  test-storefront:
+    name: Test Storefront
+    runs-on: ubuntu-latest
+    needs: setup-and-validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install storefront dependencies
+        run: npm install --workspace=storefront
+
+      - name: Lint storefront
+        run: npm run lint --workspace=storefront
+
+      - name: Run storefront tests
+        run: npm run test --workspace=storefront -- --watch=false --browsers=ChromeHeadless
+
+      - name: Build storefront (production)
+        run: npm run build:storefront -- --configuration production
+
+      - name: Verify storefront build
+        run: |
+          if [ ! -d "storefront/dist" ]; then
+            echo "❌ Storefront build output not found"
+            exit 1
+          fi
+          echo "✅ Storefront build successful"
+
+      - name: Upload storefront build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-build
+          path: storefront/dist/
+          retention-days: 7
+
+  # Job 4: Integration test
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [install-full-stack, test-storefront]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: medusa_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install everything
+        env:
+          CI: true
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: medusa_integration
+          SKIP_USER_PROMPT: true
+          SKIP_SEED_PROMPT: false
+        run: node scripts/install.js
+
+      - name: Start backend
+        run: |
+          npm run dev:backend &
+          sleep 30
+
+      - name: Test backend API endpoints
+        run: |
+          # Test health endpoint
+          curl -f http://localhost:9000/health || exit 1
+          
+          # Test store endpoints
+          curl -f http://localhost:9000/store/products || echo "No products (expected)"
+          curl -f http://localhost:9000/store/regions || echo "No regions"
+          
+          # Test admin endpoints (should require auth)
+          curl -I http://localhost:9000/admin/products
+          
+          echo "✅ Backend API accessible"
+
+      - name: Build storefront
+        run: npm run build:storefront
+
+      - name: Test workspace commands
+        run: |
+          # Test workspace-specific commands work
+          npm run build --workspace=backend
+          npm run build --workspace=storefront
+          echo "✅ Workspace commands functional"
+
+      - name: Stop services
+        run: |
+          pkill -f "node.*medusa" || true
+
+  # Job 5: Security and quality
+  security-and-quality:
+    name: Security & Quality
+    runs-on: ubuntu-latest
+    needs: setup-and-validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Security audit - Root
+        run: npm audit --audit-level=high --workspaces
+        continue-on-error: true
+
+      - name: Security audit - Storefront
+        run: npm audit --audit-level=high --workspace=storefront
+        continue-on-error: true
+
+      - name: Check for secrets in code
+        run: |
+          # Simple check for common secret patterns
+          if grep -r "password.*=.*['\"].*['\"]" --include="*.js" --include="*.ts" scripts/ storefront/src/ 2>/dev/null | grep -v "placeholder\|example\|test\|template"; then
+            echo "⚠️ Potential hardcoded credentials found"
+          else
+            echo "✅ No obvious secrets found"
+          fi
+
+      - name: Check scripts syntax
+        run: |
+          node -c scripts/install.js
+          node -c scripts/install-backend.js
+          node -c scripts/check-prerequisites.js
+          echo "✅ All scripts have valid syntax"
+
+      - name: Verify .env.template
+        run: |
+          if [ ! -f "scripts/templates/.env.template" ]; then
+            echo "❌ .env.template missing"
+            exit 1
+          fi
+          
+          # Check for required template variables
+          REQUIRED_VARS=("DB_USER" "DB_PASSWORD" "DB_HOST" "DB_PORT" "DB_NAME" "JWT_SECRET" "COOKIE_SECRET")
+          
+          for var in "${REQUIRED_VARS[@]}"; do
+            if ! grep -q "{{$var}}" scripts/templates/.env.template; then
+              echo "⚠️ Template variable {{$var}} not found in .env.template"
+            fi
+          done
+          
+          echo "✅ .env.template verified"
+
+  # Job 6: Test different Node versions
+  test-node-versions:
+    name: Test Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    needs: setup-and-validate
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: medusa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Run installation
+        env:
+          CI: true
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: medusa_test
+          SKIP_USER_PROMPT: true
+          SKIP_SEED_PROMPT: true
+        run: node scripts/install.js
+
+      - name: Verify installation
+        run: |
+          if [ ! -d "backend" ] || [ ! -d "storefront/node_modules" ]; then
+            echo "❌ Installation failed"
+            exit 1
+          fi
+          echo "✅ Installation successful on Node ${{ matrix.node-version }}"
+
+  # Job 7: Build summary
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [install-full-stack, test-storefront, integration-test, security-and-quality, test-node-versions]
+    if: always()
+
+    steps:
+      - name: Check overall status
+        run: |
+          echo "Installation Test: ${{ needs.install-full-stack.result }}"
+          echo "Storefront Test: ${{ needs.test-storefront.result }}"
+          echo "Integration Test: ${{ needs.integration-test.result }}"
+          echo "Security Check: ${{ needs.security-and-quality.result }}"
+          echo "Node Versions: ${{ needs.test-node-versions.result }}"
+
+      - name: Report status
+        run: |
+          if [ "${{ needs.install-full-stack.result }}" == "success" ] && 
+             [ "${{ needs.test-storefront.result }}" == "success" ] && 
+             [ "${{ needs.integration-test.result }}" == "success" ]; then
+            echo "✅ All critical tests passed!"
+            exit 0
+          else
+            echo "❌ Some tests failed. Check the logs above."
+            exit 1
+          fi

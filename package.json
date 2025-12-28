@@ -1,0 +1,52 @@
+{
+  "name": "ecommerce-starter",
+  "version": "0.0.0",
+  "description": "Full-stack e-commerce starter with Angular and Medusa.js",
+  "private": true,
+  "workspaces": [
+    "storefront",
+    "backend"
+  ],
+  "scripts": {
+    "preinstall": "node scripts/check-prerequisites.js",
+    "install:all": "node scripts/install.js",
+    "install:backend": "node scripts/install-backend.js",
+    "install:storefront": "npm install --workspace=storefront",
+    "postinstall": "echo '✅ Dependencies installed. Run npm run install:all to setup backend.'",
+
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:storefront\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:storefront": "npm run start --workspace=storefront",
+
+    "build": "npm run build:backend && npm run build:storefront",
+    "build:backend": "npm run build --workspace=backend",
+    "build:storefront": "npm run build --workspace=storefront",
+
+    "lint": "npm run lint --workspace=storefront",
+    "test": "npm run test --workspace=storefront",
+
+    "backend:seed": "npm run seed --workspace=backend",
+    "backend:migrations": "npm run migrations:run --workspace=backend",
+    "backend:user": "npm run user --workspace=backend",
+
+    "clean": "npm run clean:backend && npm run clean:storefront",
+    "clean:backend": "rm -rf backend",
+    "clean:storefront": "rm -rf storefront/node_modules storefront/dist"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "ecommerce",
+    "angular",
+    "medusa",
+    "starter",
+    "monorepo"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
