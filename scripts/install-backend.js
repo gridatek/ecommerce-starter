@@ -180,7 +180,6 @@ async function installMedusa() {
             const args = [
                 'create-medusa-app@latest',
                 '--skip-db',
-                '--skip-migrations',
                 '--skip-env'
             ];
 

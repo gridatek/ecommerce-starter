@@ -249,7 +249,7 @@ jobs:
       #   run: npm run test --workspace=storefront -- --watch=false --browsers=ChromeHeadless
 
       - name: Build storefront (production)
-        run: npm run build:storefront -- --configuration production
+        run: npm run build:storefront
 
       - name: Verify storefront build
         run: |
