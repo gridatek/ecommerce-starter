@@ -287,6 +287,11 @@ NODE_ENV=development
 
 // Run database migrations
 async function runMigrations() {
+    if (isCI) {
+        log('\n⏭️  Skipping migrations and build (CI mode)', 'yellow');
+        return;
+    }
+
     log('\n🔄 Running database migrations...', 'cyan');
 
     try {
