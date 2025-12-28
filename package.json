@@ -12,7 +12,7 @@
     "install:all": "node scripts/install.js",
     "install:backend": "node scripts/install-backend.js",
     "install:storefront": "npm install --workspace=storefront",
-    "postinstall": "echo '✅ Dependencies installed. Run npm run install:all to setup backend.'",
+    "postinstall": "node scripts/postinstall-message.js",
 
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:storefront\"",
     "dev:backend": "npm run dev --workspace=backend",
@@ -30,8 +30,8 @@
     "backend:user": "npm run user --workspace=backend",
 
     "clean": "npm run clean:backend && npm run clean:storefront",
-    "clean:backend": "rm -rf backend",
-    "clean:storefront": "rm -rf storefront/node_modules storefront/dist"
+    "clean:backend": "node -e \"require('fs').rmSync('backend', {recursive:true, force:true})\"",
+    "clean:storefront": "npm run clean --workspace=storefront --if-present"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
