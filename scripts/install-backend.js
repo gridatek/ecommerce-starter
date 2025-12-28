@@ -184,9 +184,16 @@ async function installMedusa() {
             ];
 
             const install = spawn('npx', args, {
-                stdio: 'inherit',
+                stdio: ['pipe', 'inherit', 'inherit'],
                 cwd: path.join(__dirname, '..')
             });
+
+            // Auto-answer prompts in CI mode
+            if (isCI) {
+                // Answer "no" to all prompts (like "install Next.js Starter?")
+                install.stdin.write('n\n');
+                install.stdin.end();
+            }
 
             install.on('close', (code) => {
                 if (code === 0) {
