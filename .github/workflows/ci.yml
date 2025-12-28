@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '22.x'
 
 jobs:
   # Job 1: Setup and validate
@@ -404,69 +404,11 @@ jobs:
           
           echo "✅ .env.template verified"
 
-  # Job 6: Test different Node versions
-  test-node-versions:
-    name: Test Node ${{ matrix.node-version }}
-    runs-on: ubuntu-latest
-    needs: setup-and-validate
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: medusa_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-
-      - name: Run installation
-        env:
-          CI: true
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: medusa_test
-          SKIP_USER_PROMPT: true
-          SKIP_SEED_PROMPT: true
-        run: node scripts/install.js
-
-      - name: Verify installation
-        run: |
-          if [ ! -d "backend" ] || [ ! -d "storefront/node_modules" ]; then
-            echo "❌ Installation failed"
-            exit 1
-          fi
-          echo "✅ Installation successful on Node ${{ matrix.node-version }}"
-
-  # Job 7: Build summary
+  # Job 6: Build summary
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [install-full-stack, test-storefront, integration-test, security-and-quality, test-node-versions]
+    needs: [install-full-stack, test-storefront, integration-test, security-and-quality]
     if: always()
 
     steps:
@@ -476,7 +418,6 @@ jobs:
           echo "Storefront Test: ${{ needs.test-storefront.result }}"
           echo "Integration Test: ${{ needs.integration-test.result }}"
           echo "Security Check: ${{ needs.security-and-quality.result }}"
-          echo "Node Versions: ${{ needs.test-node-versions.result }}"
 
       - name: Report status
         run: |

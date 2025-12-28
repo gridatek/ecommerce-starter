@@ -12,8 +12,8 @@ Full-stack e-commerce application built with Angular and Medusa.js.
 
 ## Prerequisites
 
-- Node.js 18+
-- npm 9+
+- Node.js 22+
+- npm 10+
 
 ### Option A: Using Docker (Recommended)
 - Docker and Docker Compose
