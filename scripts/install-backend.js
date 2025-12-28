@@ -179,15 +179,9 @@ async function installMedusa() {
         return new Promise((resolve, reject) => {
             const args = [
                 'create-medusa-app@latest',
-                '--skip-db'
+                '--skip-db',
+                'backend'
             ];
-
-            // In CI, add --yes flag to skip prompts if supported
-            if (isCI) {
-                args.push('--yes');
-            }
-
-            args.push('backend');
 
             const install = spawn('npx', args, {
                 stdio: 'inherit',
