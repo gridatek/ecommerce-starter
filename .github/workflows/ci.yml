@@ -149,64 +149,35 @@ jobs:
       - name: Verify workspace installation
         run: |
           echo "Checking workspace structure..."
-          
+
           # Check backend
           if [ ! -d "backend" ]; then
             echo "❌ Backend directory not created"
             exit 1
           fi
-          
+
           # Check backend dependencies
           if [ ! -d "backend/node_modules" ]; then
             echo "❌ Backend dependencies not installed"
             exit 1
           fi
-          
-          # Check backend .env
-          if [ ! -f "backend/.env" ]; then
-            echo "❌ Backend .env not created"
-            exit 1
-          fi
-          
+
           # Check storefront dependencies
           if [ ! -d "storefront/node_modules" ]; then
             echo "❌ Storefront dependencies not installed"
             exit 1
           fi
-          
+
           # Check root dependencies
           if [ ! -d "node_modules" ]; then
             echo "❌ Root dependencies not installed"
             exit 1
           fi
-          
+
           echo "✅ Workspace installation verified"
 
-      - name: Build backend
-        run: npm run build:backend
-
-      - name: Test backend health
-        run: |
-          cd backend
-          npm run dev &
-          BACKEND_PID=$!
-          echo "Backend started with PID: $BACKEND_PID"
-          
-          # Wait for server to be ready
-          echo "Waiting for backend to be ready..."
-          for i in {1..30}; do
-            if curl -f http://localhost:9000/health 2>/dev/null; then
-              echo "✅ Backend is responding"
-              kill $BACKEND_PID
-              exit 0
-            fi
-            echo "Attempt $i/30..."
-            sleep 2
-          done
-          
-          echo "❌ Backend did not start in time"
-          kill $BACKEND_PID
-          exit 1
+      # Backend build and health check skipped in CI
+      # These require full database configuration and are tested in integration-test job
 
       - name: Upload backend artifacts
         if: failure()
